@@ -1,0 +1,7 @@
+Frames Generation:
+    1. For each frame of the audio have
+        - strength keyframes (noise latents)
+        - noise keyframes
+        - transform x,y,z keyframes
+        - transform rotation keyframes
+        - prompts keyframes
