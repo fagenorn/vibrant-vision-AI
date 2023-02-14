@@ -1,0 +1,27 @@
+{
+    "python.analysis.typeCheckingMode": "basic",
+    "python.analysis.autoImportCompletions": true,
+    "python.analysis.autoImportUserSymbols": true,
+    "python.linting.flake8Enabled": true,
+    "python.linting.pylintEnabled": false,
+    "python.linting.enabled": true,
+    "editor.formatOnSave": true,
+    "python.analysis.indexing": true,
+    "python.formatting.provider": "black",
+    "python.formatting.blackArgs": [
+        "--line-length",
+        "120",
+    ],
+    "python.linting.flake8Args": [
+        "--exclude=['migrations', '__pycache__', 'manage.py', 'settings.py', '.env']",
+        "--max-line-length=120",
+        "--ignore=E203"
+    ],
+    "python.analysis.diagnosticSeverityOverrides": {
+        "reportUnboundVariable": "none",
+        "reportUndefinedVariable": "none",
+        "reportMissingImports": "none",
+        "reportMissingModuleSource": "none",
+        "reportUnusedImport": "information",
+    }
+}

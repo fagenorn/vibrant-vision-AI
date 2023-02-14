@@ -13,6 +13,10 @@ torchaudio = "0.13.1+cu116"
 diffusers = { extras = ["torch"], version = "^0.12.1" }
 transformers = "^4.26.1"
 xformers = "^0.0.16"
+pandas = "^1.5.3"
+numpy = "^1.24.2"
+einops = "^0.6.0"
+opencv-python = "^4.7.0.68"
 
 [tool.poetry.group.dev.dependencies]
 black = "^22.12.0"
