@@ -10,6 +10,8 @@ revision = "fp16"
 dtype = torch.float16
 device = constants.device
 
+np.random.seed(12)
+
 
 class ImageModel:
     def __init__(self) -> None:
@@ -26,7 +28,7 @@ class ImageModel:
     def g(self, prompt, latents=None, sample=None, strength=0.1):
         inputs = {
             "prompt": prompt,
-            "num_inference_steps": 20,
+            "num_inference_steps": 21,
             "return_sample": True,
             "generator": [torch.Generator(device).manual_seed(np.random.randint(0, 2**31 - 1))],
             "timesteps": None,
@@ -47,6 +49,36 @@ class ImageModel:
             inputs["latents"] = latents
 
         return self.pipe(**inputs)
+
+    def merge_noise(self, sample, strength=0.1):
+        noise = torch.randn(sample.shape, device=device, dtype=dtype) * strength
+        sample = sample + noise
+
+        return sample
+
+    def merge_latents(self, v0, v1, t, DOT_THRESHOLD=0.9995):
+        if not isinstance(v0, np.ndarray):
+            inputs_are_torch = True
+            input_device = v0.device
+            v0 = v0.detach().cpu().numpy()
+            v1 = v1.detach().cpu().numpy()
+
+        dot = np.sum(v0 * v1 / (np.linalg.norm(v0) * np.linalg.norm(v1)))
+        if np.abs(dot) > DOT_THRESHOLD:
+            v2 = (1 - t) * v0 + t * v1
+        else:
+            theta_0 = np.arccos(dot)
+            sin_theta_0 = np.sin(theta_0)
+            theta_t = theta_0 * t
+            sin_theta_t = np.sin(theta_t)
+            s0 = np.sin(theta_0 - theta_t) / sin_theta_0
+            s1 = sin_theta_t / sin_theta_0
+            v2 = s0 * v0 + s1 * v1
+
+        if inputs_are_torch:
+            v2 = torch.from_numpy(v2).to(input_device)
+
+        return v2
 
     def __add_noise(self, latents, strength, timestep):
         noise = torch.randn(latents.shape, device=device, dtype=dtype)

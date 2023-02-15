@@ -1,13 +1,14 @@
 import math
 
+import cv2
 import numpy as np
 import torch
 from einops import rearrange
+from skimage.exposure import match_histograms
 
 import vibrant_vision.sd.animation.py3d_tools as p3d
 from vibrant_vision.sd import constants
 from vibrant_vision.sd.models.DepthModel import DepthModel
-import cv2
 
 TRANSLATION_SCALE = 1.0 / 200.0
 device = constants.device
@@ -23,6 +24,8 @@ class FrameWrapper:
         self.rot_z_keys = rot_z_keys
 
         self.depth_model = DepthModel()
+        self.color_match_sample = None
+        self.with_depth = False
 
     @staticmethod
     def sample_to_cv2(sample: torch.Tensor, type=np.uint8) -> np.ndarray:
@@ -40,21 +43,33 @@ class FrameWrapper:
         return sample
 
     def wrap_frame(self, sample, frame):
+        return sample
         if not isinstance(sample, np.ndarray):
             sample = FrameWrapper.sample_to_cv2(sample)
 
-        depth = self.__predict_depth(sample)
+        depth = None
+        if self.with_depth:
+            depth = self.__predict_depth(sample)
 
-        cv2.imwrite("out/sample_1.png", sample)
-
-        sample = self.__wrap_image(sample, depth, frame)
-
-        cv2.imwrite("out/sample_2.png", sample)
+        # sample = self.__wrap_image(sample, depth, frame)
+        # sample = self.__match_color(sample)
+        # sample = self.__unsharp_mask(sample)
 
         sample = FrameWrapper.sample_from_cv2(sample)
         sample = sample.half().to(device)
 
-        return sample, depth
+        return sample
+
+    def __match_color(self, image):
+        if self.color_match_sample is None:
+            self.color_match_sample = image
+            return image
+
+        image_lab = cv2.cvtColor(image, cv2.COLOR_RGB2LAB)
+        sample_lab = cv2.cvtColor(self.color_match_sample, cv2.COLOR_RGB2LAB)
+        matched_lab = match_histograms(image_lab, sample_lab, multichannel=True)
+        matched_rgb = cv2.cvtColor(matched_lab, cv2.COLOR_LAB2RGB)
+        return matched_rgb
 
     def __unsharp_mask(self, image, kernel_size=(5, 5), sigma=1.0, amount=1.0, threshold=0):
         """Return a sharpened version of the image, using an unsharp mask."""
@@ -71,13 +86,7 @@ class FrameWrapper:
     def __predict_depth(self, image):
         depth = self.depth_model.predict(image)
         depth = depth.squeeze().cpu().numpy()
-
-        # MiDaS makes the near values greater, and the far values lesser.
-        depth = np.subtract(50.0, depth)
-        depth = depth / 19.0
-
-        depth = np.expand_dims(depth, axis=0)
-        return torch.from_numpy(depth).squeeze().to(device)
+        return torch.from_numpy(depth).to(device)
 
     def __wrap_image(self, image, depth_tensor, frame):
         trans_xyz = [
@@ -117,7 +126,10 @@ class FrameWrapper:
             torch.linspace(-1.0, 1.0, w, dtype=torch.float32, device=device),
         )
 
-        z = depth_tensor
+        if depth_tensor is None:
+            z = torch.ones_like(x)
+        else:
+            z = depth_tensor
 
         xyz_world_old = torch.stack((x.flatten(), y.flatten(), z.flatten()), dim=1)
         xyz_cam_xy_old = persp_cam_old.get_full_projection_transform().transform_points(xyz_world_old)[:, 0:2]

@@ -5,11 +5,12 @@ import pandas as pd
 
 
 class KeyFrames(MutableSequence):
-    def __init__(self, total_frames) -> None:
+    def __init__(self, total_frames, any_type=False) -> None:
         super(KeyFrames, self).__init__()
-        self._schedule_series = pd.Series(
-            [np.nan for _ in range(total_frames)]
-        )
+        if any_type:
+            self._schedule_series = pd.Series([None for _ in range(total_frames)])
+        else:
+            self._schedule_series = pd.Series([np.nan for _ in range(total_frames)])
 
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} {self._schedule_series}>"
@@ -33,6 +34,4 @@ class KeyFrames(MutableSequence):
         self._schedule_series[index] = value
 
     def interpolate(self, method="quadratic"):
-        self._schedule_series.interpolate(
-            inplace=True, method=method, limit_direction="both"
-        )
+        self._schedule_series.interpolate(inplace=True, method=method, limit_direction="both")
