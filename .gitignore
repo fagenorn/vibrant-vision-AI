@@ -133,3 +133,5 @@ dmypy.json
 *.jpg
 
 out/
+models/
+imgs/

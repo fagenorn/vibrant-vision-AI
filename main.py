@@ -1,11 +1,10 @@
 from vibrant_vision.sd.Maestro import Maestro
-from vibrant_vision.sd.models.ImageModel import ImageModel
 from vibrant_vision.general.logging import setup_logging
 
 
 def main():
     maestro = Maestro(fps=30)
-    maestro.perform()
+    maestro.test()
     # model = Model()
     # result = model.predict("a photo of an astronaut riding a horse on mars")
 

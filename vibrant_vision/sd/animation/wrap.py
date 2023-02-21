@@ -43,7 +43,6 @@ class FrameWrapper:
         return sample
 
     def wrap_frame(self, sample, frame):
-        return sample
         if not isinstance(sample, np.ndarray):
             sample = FrameWrapper.sample_to_cv2(sample)
 
@@ -51,7 +50,7 @@ class FrameWrapper:
         if self.with_depth:
             depth = self.__predict_depth(sample)
 
-        # sample = self.__wrap_image(sample, depth, frame)
+        sample = self.__wrap_image(sample, depth, frame)
         # sample = self.__match_color(sample)
         # sample = self.__unsharp_mask(sample)
 
