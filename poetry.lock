@@ -1059,6 +1059,66 @@ socks = ["PySocks (>=1.5.6,!=1.5.7)"]
 use-chardet-on-py3 = ["chardet (>=3.0.2,<6)"]
 
 [[package]]
+name = "safetensors"
+version = "0.2.8"
+description = "Fast and Safe Tensor serialization"
+category = "main"
+optional = false
+python-versions = "*"
+files = [
+    {file = "safetensors-0.2.8-cp310-cp310-macosx_10_11_x86_64.whl", hash = "sha256:8df8af89a0b6b535b47c077e33e5cd4941ef4b067e7c1dd1a05647dec0cf2eea"},
+    {file = "safetensors-0.2.8-cp310-cp310-macosx_12_0_arm64.whl", hash = "sha256:9cabae651542b22d229b6439029fb4a3abc7868cb123af336b2877541ad9ab39"},
+    {file = "safetensors-0.2.8-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:384df328523c567a8b2193ebb02456300a43a3adbc316823d4c0d16f7ac9e89d"},
+    {file = "safetensors-0.2.8-cp310-cp310-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:aa5f4b31f2e283b83894b388298368860367a1cb773228f9bb65f8db65da1549"},
+    {file = "safetensors-0.2.8-cp310-cp310-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:70f322d170a17b6ecb9c85b15e67f4a9aa3e561594e2dfc7709c0ae0000ebfff"},
+    {file = "safetensors-0.2.8-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:50f7e90ed02ef5e4263aadce23d39a3595156816c42c4643003791b45f81fd31"},
+    {file = "safetensors-0.2.8-cp310-cp310-win32.whl", hash = "sha256:726ad66231286157dd505b5ab85fd903114dcb5f9180e79fd5540d68d6249dd0"},
+    {file = "safetensors-0.2.8-cp310-cp310-win_amd64.whl", hash = "sha256:d14e7c15e5acac6efcd5f5565e38b1b33600101387e5d16059de44adab87405f"},
+    {file = "safetensors-0.2.8-cp311-cp311-macosx_10_11_universal2.whl", hash = "sha256:6273dd3edd5db05b2da0090bc3d491bf25f6d1d7e8a4423477377649e9e38c37"},
+    {file = "safetensors-0.2.8-cp311-cp311-macosx_12_0_arm64.whl", hash = "sha256:34705920c8a02f9ea6101bae8403db5f4aa18ec3eaccd8eab6701b1c88ee5bed"},
+    {file = "safetensors-0.2.8-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:efff5ce2d3f349d5360a5ca5901ae56c7e24f8da623d57cd08f8e8b1cd9cb1f8"},
+    {file = "safetensors-0.2.8-cp311-cp311-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:dec20b9b1fc90b7b4e588b4f0e9e266bd8f26d405e08b0b6ecad3136d92d007a"},
+    {file = "safetensors-0.2.8-cp311-cp311-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:7716bab34ca9651895126c720df1bf07f464184a7409138179f38db488ca9f15"},
+    {file = "safetensors-0.2.8-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:eb28e5e6257f705828fd39b9ba28248b593f46e722d8d6beedbc8d1f194e2297"},
+    {file = "safetensors-0.2.8-cp311-cp311-win32.whl", hash = "sha256:c71e147a8c2942690e8707adbcc4ab60775bc78dfdbd7f9e696dd411adef82bb"},
+    {file = "safetensors-0.2.8-cp311-cp311-win_amd64.whl", hash = "sha256:2f40604c50d4a08a4c74f37fef735cd1e203a59aeda66ea23a01d76fb35cf407"},
+    {file = "safetensors-0.2.8-cp37-cp37m-macosx_10_11_x86_64.whl", hash = "sha256:f3c7242debe713a87ca6deaadb0d7120e61c92435414142d526e8c32da970020"},
+    {file = "safetensors-0.2.8-cp37-cp37m-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:9366140785d567049395c1c03ac69ee8d322fabcdc8fab7d389e933596b383da"},
+    {file = "safetensors-0.2.8-cp37-cp37m-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:c5d720c7640ad5f95f47780bdc35777ed8371afa14d8d63d6375cfe36df83fb4"},
+    {file = "safetensors-0.2.8-cp37-cp37m-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:a0c7ed4d75c2f248791dbe64309c98ada6f40a6949147ca2eaebd278906c918b"},
+    {file = "safetensors-0.2.8-cp37-cp37m-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:1b905cf3563da4fe8dd46fa777321516f5aa8f6bc1b884158be03a235478e96d"},
+    {file = "safetensors-0.2.8-cp37-cp37m-win32.whl", hash = "sha256:2a47327cfe57b6ee8c5dc246f9141f4f6b368e4444dd7f174c025b1d34446730"},
+    {file = "safetensors-0.2.8-cp37-cp37m-win_amd64.whl", hash = "sha256:02e67b906ad9bbb87308a34e4d2d33c9eb69baf342b7e5c872728556baf3f0b6"},
+    {file = "safetensors-0.2.8-cp38-cp38-macosx_10_11_x86_64.whl", hash = "sha256:ba7c2496765de45a84f5c79b2b12a14a568643d8966ef9bb3f8b16217a39457c"},
+    {file = "safetensors-0.2.8-cp38-cp38-macosx_12_0_arm64.whl", hash = "sha256:90cd22387b1520c4465033b986f79f0d24cc41aabae1903a22eff3b42cee9ad5"},
+    {file = "safetensors-0.2.8-cp38-cp38-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:f279e0fd917a886e1936d534734593f780afdddc6ed62f8ebf2f59de811cdd7c"},
+    {file = "safetensors-0.2.8-cp38-cp38-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:af4fce0565574ec3dbe997b021ed32d3dc229547c4f7fca2459be1f725c26f88"},
+    {file = "safetensors-0.2.8-cp38-cp38-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:ff0096f5a765e6e3f7f3156f568f59499edeade19e813d610a124ca70b42cdda"},
+    {file = "safetensors-0.2.8-cp38-cp38-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:c02c1cab1d23e6cc8ac1ef865efe76f2d0800e203c877288ebd31747f47a6940"},
+    {file = "safetensors-0.2.8-cp38-cp38-win32.whl", hash = "sha256:832f27f6f379fb15d87f3a10eb87e2480434a89c483d7edc8a0c262364ba72c1"},
+    {file = "safetensors-0.2.8-cp38-cp38-win_amd64.whl", hash = "sha256:89da823f9801e92b2c48e8fad1e2f7f0cb696a8a93dab4c6700e8de06fe87392"},
+    {file = "safetensors-0.2.8-cp39-cp39-macosx_10_11_x86_64.whl", hash = "sha256:ee8e169040468d176172b4f84a160ece2064abcc77294c4994a9d2bb5255cd75"},
+    {file = "safetensors-0.2.8-cp39-cp39-macosx_12_0_arm64.whl", hash = "sha256:ac2197dbbf7cbd269faf8cebab4220dba5aa2ac8beacbce8fdcb9800776781ca"},
+    {file = "safetensors-0.2.8-cp39-cp39-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:2f90513eee0a11902df7e51b07c3d9c328828b9dd692d6c74140bed932e7a491"},
+    {file = "safetensors-0.2.8-cp39-cp39-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:2bd2e4c6258dd0f4e3d554f2f59789f25ef4757431e83c927016de6339e54811"},
+    {file = "safetensors-0.2.8-cp39-cp39-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:01000a4bfdf0474bb1bdf369de1284c93b4e6047524fe9dc55d77586cb9d0243"},
+    {file = "safetensors-0.2.8-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:466f92a384e4fcb6b1b9811e7488516c4638119c302a959b89bbe1be826d5e25"},
+    {file = "safetensors-0.2.8-cp39-cp39-win32.whl", hash = "sha256:2f16e5ee70ae4218474493eff8d998e632a896a6b8aff9273511d654cdf367ab"},
+    {file = "safetensors-0.2.8-cp39-cp39-win_amd64.whl", hash = "sha256:ba3dc236a2344b7feadc9868307f42ba5e4804c9d68a80a35aac831349b31f6f"},
+    {file = "safetensors-0.2.8.tar.gz", hash = "sha256:2720b20a6a38c799dca79bd76caeeac2f7df585a9d4f7d59fa7e28eff9ccb27f"},
+]
+
+[package.extras]
+all = ["black (==22.3)", "click (==8.0.4)", "flake8 (>=3.8.3)", "flax", "h5py", "huggingface-hub", "isort (>=5.5.4)", "jax", "numpy", "pytest", "pytest-benchmark", "setuptools-rust", "tensorflow", "torch"]
+dev = ["black (==22.3)", "click (==8.0.4)", "flake8 (>=3.8.3)", "flax", "h5py", "huggingface-hub", "isort (>=5.5.4)", "jax", "numpy", "pytest", "pytest-benchmark", "setuptools-rust", "tensorflow", "torch"]
+jax = ["flax", "jax"]
+numpy = ["numpy"]
+quality = ["black (==22.3)", "click (==8.0.4)", "flake8 (>=3.8.3)", "isort (>=5.5.4)"]
+tensorflow = ["tensorflow"]
+testing = ["h5py", "huggingface-hub", "numpy", "pytest", "pytest-benchmark", "setuptools-rust"]
+torch = ["torch"]
+
+[[package]]
 name = "scikit-image"
 version = "0.19.3"
 description = "Image processing in Python"
@@ -1445,4 +1505,4 @@ testing = ["flake8 (<5)", "func-timeout", "jaraco.functools", "jaraco.itertools"
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10.7,<3.11"
-content-hash = "e7a1d615b6227e6e01cc3a4e40b39a63d0004e0998d6d25c0946d9a1e4dacb00"
+content-hash = "7ea4575c505ff8025fb6fcb78f562b987276dcdb5cf55c40883704cea14ac05d"

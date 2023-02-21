@@ -1,19 +1,21 @@
-from asyncio.log import logger
 import os
+from re import L
 import time
-from typing import List, Optional, Tuple, Union
+from asyncio.log import logger
+from typing import List, Optional, Union
 
+import cv2
 import lpips
 import numpy as np
 import torch
+import torch.nn.functional as F
 from PIL import Image
 from tqdm.auto import tqdm
 
+import vibrant_vision.sd.animation.py3d_tools as p3d
 from vibrant_vision.sd import constants
 from vibrant_vision.sd.animation.movie import MovieSaver
-from vibrant_vision.sd.models import ImageModel
-import vibrant_vision.sd.animation.py3d_tools as p3d
-import torch.nn.functional as F
+from vibrant_vision.sd.models.controlnet.controlnet_hinter import hint_canny
 
 device = constants.device
 dtype = torch.float16
@@ -76,6 +78,9 @@ class LatentBlending:
         self.dt_per_diff = 0
         self.spatial_mask = None
 
+        self.control_hint = None
+        self.controlnet_guidance_percent = 0.1
+
         self.lpips = lpips.LPIPS(net="alex").cuda(device)
 
     def init_mode(self):
@@ -92,6 +97,24 @@ class LatentBlending:
     def set_negative_prompt(self, negative_prompt):
         r"""Set the negative prompt. Currenty only one negative prompt is supported"""
         self.negative_prompt = negative_prompt
+
+    def set_control_image(self, image):
+        r"""Set the control net latents. Given an image, the canny will be detected and used to nudge latents"""
+        if isinstance(image, str):
+            image = cv2.imread(image)[:, :]
+
+        cv2.imwrite("control_image.png", image)
+        control_hint = hint_canny(image, self.sdh.width, self.sdh.height)
+        expected_shape = (self.height, self.width, 3)
+        if control_hint.shape != expected_shape:
+            raise ValueError(f"Expected image shape {expected_shape}, got {control_hint.shape}")
+        cv2.imwrite("control_hint.png", control_hint)
+        control_hint = torch.from_numpy(control_hint.copy())
+        control_hint = control_hint.to(device=device, dtype=dtype)
+        control_hint /= 255.0
+        control_hint = control_hint.repeat(1, 1, 1, 1)
+        control_hint = control_hint.permute(0, 3, 1, 2)
+        self.control_hint = control_hint
 
     def set_guidance_mid_dampening(self, fract_mixing):
         r"""
@@ -248,6 +271,8 @@ class LatentBlending:
             self.sdh.decode_latents((self.tree_latents[-1][-1])),
         ]
         self.tree_idx_injection = [0, 0]
+
+        self.set_control_image(self.tree_final_imgs[0])
 
         # Hard-fix. Apply spatial mask only for list_latents2 but not for transition. WIP...
         self.spatial_mask = None
@@ -623,7 +648,9 @@ class LatentBlending:
                 list_latents_mixing=list_latents_mixing,
                 mixing_coeffs=mixing_coeffs,
                 spatial_mask=self.spatial_mask,
+                controlnet_hint=self.control_hint,
                 return_image=return_image,
+                controlnet_guidance_percent=self.controlnet_guidance_percent,
             )
 
     def get_wrap_offset(self):

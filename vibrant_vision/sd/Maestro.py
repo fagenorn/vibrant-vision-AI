@@ -11,12 +11,14 @@ from vibrant_vision.sd.animation.blending import LatentBlending, rife_interpolat
 from vibrant_vision.sd.animation.keyframes import KeyFrames
 from vibrant_vision.sd.animation.wrap import FrameWrapper
 from vibrant_vision.sd.models.ImageModel import BlenderPipeline
+from vibrant_vision.sd.models.controlnet.unet_2d_condition import UNet2DConditionModel as CustomUNet2DConditionModel
 
 logger = get_logger(__name__)
 device = constants.device
 checkpoint = "WarriorMama777/AbyssOrangeMix2"
 revision = "main"
 dtype = torch.float16
+controlnet_path = "./models/control_sd15_canny_fp16"
 
 
 class Maestro:
@@ -63,7 +65,17 @@ class Maestro:
             self.seed_keys[i] = i
 
         logger.info("Initializing model...")
-        self.model = BlenderPipeline.from_pretrained(checkpoint, revision=revision, torch_dtype=dtype)
+        controlnet = CustomUNet2DConditionModel.from_pretrained(
+            "takuma104/control_sd15_canny", subfolder="controlnet", torch_dtype=dtype
+        )
+        unet = CustomUNet2DConditionModel.from_pretrained(checkpoint, subfolder="unet", torch_dtype=dtype)
+        self.model = BlenderPipeline.from_pretrained(
+            checkpoint,
+            revision=revision,
+            torch_dtype=dtype,
+            controlnet=controlnet,
+            unet=unet,
+        )
         self.model = self.model.to(device)
         self.model.enable_xformers_memory_efficient_attention()
         self.blending = LatentBlending(self.model)
@@ -97,6 +109,13 @@ class Maestro:
             self.target_latents_keys[frame] = sample.detach().cpu().numpy()
 
     def test(self):
+        # from vibrant_vision.sd.models.controlnet.model_loader import convert_controlnet_model
+
+        # cn_path = "./models/diff_control_sd15_canny_fp16.safetensors"
+        # config_path = "./models/cldm_v15.yaml"
+        # convert_controlnet_model(config_path, cn_path, 512, False, controlnet_path)
+        # return
+
         # img1 = np.array(Image.open("imgs/a.png"))
         # img2 = np.array(Image.open("imgs/b.png"))
 
@@ -117,16 +136,16 @@ class Maestro:
         list_prompts.append(pp3)
 
         fixed_seed = 1791072463
-        variance_threshold = 0.15
+        variance_threshold = 0.65
 
         fp_movie = "./out/movie_example2.mp4"
-        num_inference_steps = 15
+        num_inference_steps = 20
         depth_strength = 0.65  # Specifies how deep (in terms of diffusion iterations the first branching happens)
         duration_single_trans = 2
-        max_frames = 30
+        max_frames = 10
 
         self.blending.set_negative_prompt(np)
-        # self.blending.set_height(704)
+        self.blending.set_height(768)
 
         list_movie_parts = []
         for i in range(len(list_prompts) - 1):

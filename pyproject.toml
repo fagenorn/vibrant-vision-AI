@@ -21,6 +21,7 @@ scikit-image = "^0.19.3"
 lpips = "^0.1.4"
 ffmpeg-python = "^0.2.0"
 omegaconf = "^2.3.0"
+safetensors = "^0.2.8"
 
 [tool.poetry.group.dev.dependencies]
 black = "^22.12.0"

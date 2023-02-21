@@ -131,18 +131,42 @@ class BlenderPipeline(DiffusionPipeline):
     @torch.no_grad()
     def controlnet_hint_conversion(self, controlnet_hint):
         channels = 3
-        shape_cwh = (channels, self.height, self.width)
-        shape_bchw = (1, channels, self.height, self.width)
-        shape_nchw = (1, channels, self.height, self.width)
-        if controlnet_hint.shape in [shape_cwh, shape_bchw, shape_nchw]:
-            controlnet_hint = controlnet_hint.to(dtype=self.controlnet.dtype, device=self.controlnet.device)
-            if controlnet_hint.shape == shape_ncwh:
-                controlnet_hint = controlnet_hint.repeat(1, 1, 1, 1)
-            return controlnet_hint
-        else:
-            raise ValueError(
-                f"controlnet_hint must be of shape {shape_cwh}, {shape_bchw}, or {shape_nchw}, but is {controlnet_hint.shape}"
-            )
+        if isinstance(controlnet_hint, torch.Tensor):
+            shape_cwh = (channels, self.height, self.width)
+            shape_bchw = (1, channels, self.height, self.width)
+            shape_nchw = (1, channels, self.height, self.width)
+            if controlnet_hint.shape in [shape_cwh, shape_bchw, shape_nchw]:
+                controlnet_hint = controlnet_hint.to(dtype=self.controlnet.dtype, device=self.controlnet.device)
+                if controlnet_hint.shape != shape_nchw:
+                    controlnet_hint = controlnet_hint.repeat(1, 1, 1, 1)
+                return controlnet_hint
+            else:
+                raise ValueError(
+                    f"controlnet_hint must be of shape {shape_cwh}, {shape_bchw}, or {shape_nchw}, but is {controlnet_hint.shape}"
+                )
+        elif isinstance(controlnet_hint, np.ndarray):
+            # np.ndarray: acceptable shape is any of hw, hwc, bhwc(b==1) or bhwc(b==num_images_per_promot)
+            # hwc is opencv compatible image format. Color channel must be BGR Format.
+            if controlnet_hint.shape == (self.height, self.width):
+                controlnet_hint = np.repeat(controlnet_hint[:, :, np.newaxis], channels, axis=2)  # hw -> hwc(c==3)
+            shape_hwc = (self.height, self.width, channels)
+            shape_bhwc = (1, self.height, self.width, channels)
+            shape_nhwc = (1, self.height, self.width, channels)
+            if controlnet_hint.shape in [shape_hwc, shape_bhwc, shape_nhwc]:
+                controlnet_hint = torch.from_numpy(controlnet_hint.copy())
+                controlnet_hint = controlnet_hint.to(dtype=self.controlnet.dtype, device=self.controlnet.device)
+                controlnet_hint /= 255.0
+                if controlnet_hint.shape != shape_nhwc:
+                    controlnet_hint = controlnet_hint.repeat(1, 1, 1, 1)
+                controlnet_hint = controlnet_hint.permute(0, 3, 1, 2)  # b h w c -> b c h w
+                return controlnet_hint
+            else:
+                raise ValueError(
+                    f"Acceptble shape of `controlnet_hint` are any of ({self.width}, {channels}), "
+                    + f"({self.height}, {self.width}, {channels}), "
+                    + f"(1, {self.height}, {self.width}, {channels}) or "
+                    + f"({1}, {channels}, {self.height}, {self.width}) but is {controlnet_hint.shape}"
+                )
 
     @torch.no_grad()
     def __call__(
@@ -155,6 +179,7 @@ class BlenderPipeline(DiffusionPipeline):
         spatial_mask=None,
         return_image=False,
         controlnet_hint=None,
+        controlnet_guidance_percent=1.0,
     ):
         if isinstance(mixing_coeffs, list):
             assert len(mixing_coeffs) == self.num_inference_steps
@@ -164,7 +189,8 @@ class BlenderPipeline(DiffusionPipeline):
         else:
             raise ValueError("mixing_coeffs must be a float or a list of floats")
 
-        controlnet_hint = self.controlnet_hint_conversion(controlnet_hint)
+        if controlnet_hint is not None:
+            controlnet_hint = self.controlnet_hint_conversion(controlnet_hint)
 
         if np.sum(list_mixing_coeffs) > 0:
             assert len(list_latents_mixing) == self.num_inference_steps
@@ -195,7 +221,10 @@ class BlenderPipeline(DiffusionPipeline):
                     latents = interpolate_spherical(latents, list_latents_mixing[i - 1], 1 - spatial_mask)
 
                 noise_pred = None
-                if controlnet_hint is not None:
+                stop_controlnet_guidance = (
+                    i - idx_start >= (self.num_inference_steps - idx_start) * controlnet_guidance_percent
+                )
+                if controlnet_hint is not None and not stop_controlnet_guidance:
                     control = self.controlnet(
                         latent_model_input, step, encoder_hidden_states=prompt_embeds, controlnet_hint=controlnet_hint
                     )
