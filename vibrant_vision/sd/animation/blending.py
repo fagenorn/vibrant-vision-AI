@@ -1133,12 +1133,6 @@ def rife_interpolate(img1, img2, tot_frame, scale=1.0):
 
     def execute(i1, i2, n):
         with torch.no_grad():
-            # if rife_model.version >= 3.9:
-            # res = []
-            # for i in range(n):
-            #     res.append(rife_model.inference(i1, i2, timestep=(i + 1) * 1.0 / (n + 1), scale=scale))
-            # return res
-            # else:
             mid = rife_model.inference(i1, i2, scale=scale)
             if n == 1:
                 return [mid]
@@ -1155,91 +1149,6 @@ def rife_interpolate(img1, img2, tot_frame, scale=1.0):
         mid = mid[:h, :w]
         result.append(mid)
     return result
-
-
-def get_spacing(nmb_points: int, scaling: float):
-    """
-    Helper function for getting nonlinear spacing between 0 and 1, symmetric around 0.5
-    Args:
-        nmb_points: int
-            Number of points between [0, 1]
-        scaling: float
-            Higher values will return higher sampling density around 0.5
-
-    """
-    if scaling < 1.7:
-        return np.linspace(0, 1, nmb_points)
-    nmb_points_per_side = nmb_points // 2 + 1
-    if np.mod(nmb_points, 2) != 0:  # uneven case
-        left_side = np.abs(np.linspace(1, 0, nmb_points_per_side) ** scaling / 2 - 0.5)
-        right_side = 1 - left_side[::-1][1:]
-    else:
-        left_side = np.abs(np.linspace(1, 0, nmb_points_per_side) ** scaling / 2 - 0.5)[0:-1]
-        right_side = 1 - left_side[::-1]
-    all_fracts = np.hstack([left_side, right_side])
-    return all_fracts
-
-
-def get_time(resolution=None):
-    """
-    Helper function returning an nicely formatted time string, e.g. 221117_1620
-    """
-    if resolution == None:
-        resolution = "second"
-    if resolution == "day":
-        t = time.strftime("%y%m%d", time.localtime())
-    elif resolution == "minute":
-        t = time.strftime("%y%m%d_%H%M", time.localtime())
-    elif resolution == "second":
-        t = time.strftime("%y%m%d_%H%M%S", time.localtime())
-    elif resolution == "millisecond":
-        t = time.strftime("%y%m%d_%H%M%S", time.localtime())
-        t += "_"
-        t += str("{:03d}".format(int(int(datetime.utcnow().strftime("%f")) / 1000)))
-    else:
-        raise ValueError("bad resolution provided: %s" % resolution)
-    return t
-
-
-def compare_dicts(a, b):
-    """
-    Compares two dictionaries a and b and returns a dictionary c, with all
-    keys,values that have shared keys in a and b but same values in a and b.
-    The values of a and b are stacked together in the output.
-    Example:
-        a = {}; a['bobo'] = 4
-        b = {}; b['bobo'] = 5
-        c = dict_compare(a,b)
-        c = {"bobo",[4,5]}
-    """
-    c = {}
-    for key in a.keys():
-        if key in b.keys():
-            val_a = a[key]
-            val_b = b[key]
-            if val_a != val_b:
-                c[key] = [val_a, val_b]
-    return c
-
-
-def yml_load(fp_yml, print_fields=False):
-    """
-    Helper function for loading yaml files
-    """
-    with open(fp_yml) as f:
-        data = yaml.load(f, Loader=yaml.loader.SafeLoader)
-    dict_data = dict(data)
-    print("load: loaded {}".format(fp_yml))
-    return dict_data
-
-
-def yml_save(fp_yml, dict_stuff):
-    """
-    Helper function for saving yaml files
-    """
-    with open(fp_yml, "w") as f:
-        data = yaml.dump(dict_stuff, f, sort_keys=False, default_flow_style=False)
-    print("yml_save: saved {}".format(fp_yml))
 
 
 def slerp(low, high, val):
