@@ -10,7 +10,7 @@ python = ">=3.10.7,<3.11"
 torch = "1.13.1+cu116"
 torchvision = "0.14.1+cu116"
 torchaudio = "0.13.1+cu116"
-diffusers = {extras = ["torch"], version = "^0.13.1"}
+diffusers = { extras = ["torch"], version = "^0.13.1" }
 transformers = "^4.26.1"
 xformers = "^0.0.16"
 pandas = "^1.5.3"
@@ -32,7 +32,7 @@ poethepoet = "^0.18.1"
 format = "black ."
 torch-install = "python -m pip install torch==1.13.1+cu116 torchvision==0.14.1+cu116 torchaudio==0.13.1+cu116 -f https://download.pytorch.org/whl/torch_stable.html"
 start = "poetry run python main.py"
-
+convert_ckpt = "poetry run python ./scripts/convert_original_stable_diffusion_to_diffusers.py"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

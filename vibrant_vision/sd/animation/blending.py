@@ -1,7 +1,8 @@
 import os
-from re import L
 import time
 from asyncio.log import logger
+from itertools import zip_longest
+from re import L
 from typing import List, Optional, Union
 
 import cv2
@@ -9,6 +10,7 @@ import lpips
 import numpy as np
 import torch
 import torch.nn.functional as F
+from click import prompt
 from PIL import Image
 from tqdm.auto import tqdm
 
@@ -26,11 +28,13 @@ class LatentBlending:
     def __init__(
         self,
         sdh=None,
+        upscaler=None,
         guidance_scale: float = 4.0,
         guidance_scale_mid_damper: float = 0.5,
         mid_compression_scaler: float = 1.2,
     ) -> None:
         self.sdh = sdh
+        self.upscaler = upscaler
         self.width = self.sdh.width
         self.height = self.sdh.height
         self.guidance_scale_mid_damper = guidance_scale_mid_damper
@@ -78,8 +82,9 @@ class LatentBlending:
         self.dt_per_diff = 0
         self.spatial_mask = None
 
-        self.control_hint = None
-        self.controlnet_guidance_percent = 0.1
+        self.control_hint_1 = None
+        self.control_hint_2 = None
+        self.controlnet_guidance_percent = 0.5
 
         self.lpips = lpips.LPIPS(net="alex").cuda(device)
 
@@ -98,7 +103,11 @@ class LatentBlending:
         r"""Set the negative prompt. Currenty only one negative prompt is supported"""
         self.negative_prompt = negative_prompt
 
-    def set_control_image(self, image):
+    def set_controlnet_guidance_percent(self, controlnet_guidance_percent):
+        r"""Set the controlnet guidance percent. This is the amount of controlnet guidance that is used."""
+        self.controlnet_guidance_percent = controlnet_guidance_percent
+
+    def __set_control_image(self, image):
         r"""Set the control net latents. Given an image, the canny will be detected and used to nudge latents"""
         if isinstance(image, str):
             image = cv2.imread(image)[:, :]
@@ -114,7 +123,13 @@ class LatentBlending:
         control_hint /= 255.0
         control_hint = control_hint.repeat(1, 1, 1, 1)
         control_hint = control_hint.permute(0, 3, 1, 2)
-        self.control_hint = control_hint
+        return control_hint
+
+    def set_control_image_1(self, image):
+        self.control_hint_1 = self.__set_control_image(image)
+
+    def set_control_image_2(self, image):
+        self.control_hint_2 = self.__set_control_image(image)
 
     def set_guidance_mid_dampening(self, fract_mixing):
         r"""
@@ -254,12 +269,16 @@ class LatentBlending:
         # Compute / Recycle first image
         if not recycle_img1 or len(self.tree_latents[0]) != self.num_inference_steps:
             list_latents1 = self.compute_latents1()
+            img1 = self.sdh.decode_latents(list_latents1[-1])
+            self.set_control_image_1(img1)
         else:
             list_latents1 = self.tree_latents[0]
 
         # Compute / Recycle second image
         if not recycle_img2 or len(self.tree_latents[-1]) != self.num_inference_steps:
             list_latents2 = self.compute_latents2()
+            img2 = self.sdh.decode_latents(list_latents2[-1])
+            self.set_control_image_2(img2)
         else:
             list_latents2 = self.tree_latents[-1]
 
@@ -271,8 +290,6 @@ class LatentBlending:
             self.sdh.decode_latents((self.tree_latents[-1][-1])),
         ]
         self.tree_idx_injection = [0, 0]
-
-        self.set_control_image(self.tree_final_imgs[0])
 
         # Hard-fix. Apply spatial mask only for list_latents2 but not for transition. WIP...
         self.spatial_mask = None
@@ -296,7 +313,8 @@ class LatentBlending:
                 list_latents = self.compute_latents_mix(fract_mixing, b_parent1, b_parent2, idx_injection)
                 self.insert_into_tree(fract_mixing, idx_injection, list_latents)
 
-            return self.tree_final_imgs
+        self.upscale_decode_latents()
+        return self.tree_final_imgs
 
     def compute_latents1(self, return_image=False):
         r"""
@@ -305,7 +323,7 @@ class LatentBlending:
             return_image: bool
                 whether to return an image or the list of latents
         """
-        print("starting compute_latents1")
+        logger.info("Computing latents for first image")
         list_conditionings = self.get_mixed_conditioning(0)
         t0 = time.time()
         latents_start = self.get_noise()
@@ -326,7 +344,7 @@ class LatentBlending:
             return_image: bool
                 whether to return an image or the list of latents
         """
-        print("starting compute_latents2")
+        logger.info("Computing latents for second image")
         list_conditionings = self.get_mixed_conditioning(1)
         latents_start = self.get_noise()
         # Influence from branch1
@@ -372,6 +390,8 @@ class LatentBlending:
                 the index in terms of diffusion steps, where the next insertion will start.
         """
         list_conditionings = self.get_mixed_conditioning(fract_mixing)
+        control_hint = self.get_mixed_control_hint(fract_mixing)
+
         fract_mixing_parental = (fract_mixing - self.tree_fracts[b_parent1]) / (
             self.tree_fracts[b_parent2] - self.tree_fracts[b_parent1]
         )
@@ -409,6 +429,7 @@ class LatentBlending:
             idx_start=idx_injection,
             list_latents_mixing=list_latents_parental_mix,
             mixing_coeffs=mixing_coeffs,
+            controlnet_hint=control_hint,
         )
 
         return list_latents
@@ -476,7 +497,7 @@ class LatentBlending:
                         list_idx_injection[0], list_idx_injection[-1], nmb_max_branches
                     ).astype(np.int32)
                     list_nmb_stems = np.ones(len(list_idx_injection), dtype=np.int32)
-            elif stop_criterion == "max_frames" and list_nmb_stems[0] + 3 > max_frames:
+            elif stop_criterion == "max_frames" and np.sum(list_nmb_stems) + 3 > max_frames:
                 stop_criterion_reached = True
             else:
                 is_first_iteration = False
@@ -540,6 +561,32 @@ class LatentBlending:
         self.tree_final_imgs.insert(b_parent1 + 1, self.sdh.decode_latents(list_latents[-1]))
         self.tree_fracts.insert(b_parent1 + 1, fract_mixing)
         self.tree_idx_injection.insert(b_parent1 + 1, idx_injection)
+
+    def upscale_decode_latents(
+        self,
+    ):
+        if self.upscaler is None:
+            return
+
+        batch_size = 4
+        result = []
+
+        def grouper(iterable, n, fillvalue=None):
+            args = [iter(iterable)] * n
+            return zip_longest(*args, fillvalue=fillvalue)
+
+        for latents in grouper(self.tree_latents, batch_size):
+            latents = [latent[-1] for latent in latents if latent is not None]
+            latents = torch.cat(latents, dim=0)
+            images = self.upscaler(
+                latents=latents,
+                num_inference_steps=self.num_inference_steps,
+                return_image=True,
+                batch_size=min(batch_size, len(latents)),
+            )
+            result.extend(images)
+
+        self.tree_final_imgs = result
 
     def get_spatial_mask_template(self):
         r"""
@@ -609,6 +656,7 @@ class LatentBlending:
     def run_diffusion(
         self,
         list_conditionings,
+        controlnet_hint=None,
         latents_start: torch.FloatTensor = None,
         idx_start: int = 0,
         list_latents_mixing=None,
@@ -648,7 +696,7 @@ class LatentBlending:
                 list_latents_mixing=list_latents_mixing,
                 mixing_coeffs=mixing_coeffs,
                 spatial_mask=self.spatial_mask,
-                controlnet_hint=self.control_hint,
+                controlnet_hint=controlnet_hint,
                 return_image=return_image,
                 controlnet_guidance_percent=self.controlnet_guidance_percent,
             )
@@ -698,25 +746,14 @@ class LatentBlending:
         if self.mode == "standard":
             text_embeddings_mix = interpolate_linear(self.text_embedding1, self.text_embedding2, fract_mixing)
             list_conditionings = [text_embeddings_mix]
-        elif self.mode == "inpaint":
-            text_embeddings_mix = interpolate_linear(self.text_embedding1, self.text_embedding2, fract_mixing)
-            list_conditionings = [text_embeddings_mix]
-        elif self.mode == "upscale":
-            text_embeddings_mix = interpolate_linear(self.text_embedding1, self.text_embedding2, fract_mixing)
-            cond, uc_full = self.sdh.get_cond_upscaling(
-                self.image1_lowres, text_embeddings_mix, self.noise_level_upscaling
-            )
-            condB, uc_fullB = self.sdh.get_cond_upscaling(
-                self.image2_lowres, text_embeddings_mix, self.noise_level_upscaling
-            )
-            cond["c_concat"][0] = interpolate_spherical(cond["c_concat"][0], condB["c_concat"][0], fract_mixing)
-            uc_full["c_concat"][0] = interpolate_spherical(
-                uc_full["c_concat"][0], uc_fullB["c_concat"][0], fract_mixing
-            )
-            list_conditionings = [cond, uc_full]
         else:
             raise ValueError(f"mix_conditioning: unknown mode {self.mode}")
         return list_conditionings
+
+    @torch.no_grad()
+    def get_mixed_control_hint(self, fract_mixing):
+        s = interpolate_linear(self.control_hint_1, self.control_hint_2, fract_mixing)
+        return s
 
     @torch.no_grad()
     def get_text_embeddings(self, prompt: str):
@@ -763,11 +800,12 @@ class LatentBlending:
 
         # Let's get more cheap frames via linear interpolation (duration_transition*fps frames)
         imgs_transition_ext = add_frames_linear_interp(self.tree_final_imgs, duration_transition, fps)
+        h, w = imgs_transition_ext[0].shape[:2]
 
         # Save as MP4
         if os.path.isfile(fp_movie):
             os.remove(fp_movie)
-        ms = MovieSaver(fp_movie, fps=fps, shape_hw=[self.sdh.height, self.sdh.width])
+        ms = MovieSaver(fp_movie, fps=fps, shape_hw=[h, w])
         for img in tqdm(imgs_transition_ext):
             ms.write_frame(img)
         ms.finalize()
@@ -856,6 +894,9 @@ class LatentBlending:
         # Move over prompts and text embeddings
         self.prompt1 = self.prompt2
         self.text_embedding1 = self.text_embedding2
+
+        # Move over control hints
+        self.control_hint_1 = self.control_hint_2
 
         # Final cleanup for extra sanity
         self.tree_final_imgs = []

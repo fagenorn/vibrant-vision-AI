@@ -12,13 +12,15 @@ from vibrant_vision.sd.animation.keyframes import KeyFrames
 from vibrant_vision.sd.animation.wrap import FrameWrapper
 from vibrant_vision.sd.models.ImageModel import BlenderPipeline
 from vibrant_vision.sd.models.controlnet.unet_2d_condition import UNet2DConditionModel as CustomUNet2DConditionModel
+from vibrant_vision.sd.models.UpscalerModel import BlenderLatentUpscalePipeline
 
 logger = get_logger(__name__)
 device = constants.device
-checkpoint = "WarriorMama777/AbyssOrangeMix2"
+checkpoint = "./models/ned"
 revision = "main"
 dtype = torch.float16
-controlnet_path = "./models/control_sd15_canny_fp16"
+controlnet_checkpoint = "takuma104/control_sd15_canny"
+upscaler_checkpoint = "stabilityai/sd-x2-latent-upscaler"
 
 
 class Maestro:
@@ -66,7 +68,7 @@ class Maestro:
 
         logger.info("Initializing model...")
         controlnet = CustomUNet2DConditionModel.from_pretrained(
-            "takuma104/control_sd15_canny", subfolder="controlnet", torch_dtype=dtype
+            controlnet_checkpoint, subfolder="controlnet", torch_dtype=dtype
         )
         unet = CustomUNet2DConditionModel.from_pretrained(checkpoint, subfolder="unet", torch_dtype=dtype)
         self.model = BlenderPipeline.from_pretrained(
@@ -76,9 +78,16 @@ class Maestro:
             controlnet=controlnet,
             unet=unet,
         )
+        # self.model.load_lora_checkpoint("./lora/openjourneyLora.safetensors", alpha=1.0)
+        # self.model.load_lora_checkpoint("./lora/2bNierAutomataLora_v2b.safetensors", alpha=1.0)
         self.model = self.model.to(device)
         self.model.enable_xformers_memory_efficient_attention()
-        self.blending = LatentBlending(self.model)
+        self.upscaler = BlenderLatentUpscalePipeline.from_pretrained(upscaler_checkpoint, torch_dtype=dtype)
+        self.upscaler = self.upscaler.to(device)
+        self.upscaler.enable_xformers_memory_efficient_attention()
+        self.upscaler.enable_vae_slicing()
+
+        self.blending = LatentBlending(self.model, self.upscaler)
 
         self.wrap = FrameWrapper(
             self.translation_x_keys,
@@ -123,28 +132,29 @@ class Maestro:
         #     Image.fromarray(t).save(f"imgs/{i}.png")
 
         # return
-        pp2 = "1girl, (((skindentation))), cleavage, breasts, thigh strap, large breasts, breast press, earrings, no bra, very long hair, white hair, mini skirt, [fishnet thighhighs], thighs, thick thighs,  garter straps"
-        pp = "nsfw,1 girl, (realistic:1.5),photorealistic, octane render,(hyperrealistic:1.2),(photorealistic face:1.2),sharp focus,soft lighting,(specular lighting:1.4), (Masterpiece), (Best Quality), fantasy, extremely detailed, intricate, hyper detailed,best quality,(8k), (4k),illustration, (perfect face),blue eyes,cute face,(aegyo sal:1),(((puffy eyes))), thick thighs,wide hips,huge thighs, standing,bridge,outdoor, scarf,white Jacket,white trousers, thick eyelashes,long eyelashes, brown hair,wavy hair,Coiled hair, dynamic pose,smiling,looking at viewer, (Kpop idol)"
-        pp3 = "masterpiece, best quality, flat color, limited palette, low contrast, 1girl, serafuku, long straight black hair, lycoris flower, goat skull, (red, black)"
-        np = "(worst quality, low quality:1.4), (realistic, lip, nose, tooth, rouge, lipstick, eyeshadow:1.0), (dusty sunbeams:1.0),, (abs, muscular, rib:1.0), (depth of field, bokeh, blurry:1.4), (greyscale, monochrome:1.0), text, title, logo, signature"
+        pp = "masterpiece, best quality, 1girl, bangs, blue_sailor_collar, blurry, blurry_foreground, blush, branch, rainbow hair, cherry_blossoms, dango, depth_of_field, eyebrows_visible_through_hair, falling_petals, floral_background, flower, hair_between_eyes, hand_up, holding, holding_flower, in_tree, long_hair, long_sleeves, looking_at_viewer, neckerchief, outdoors, petals, pink_flower, plum_blossoms, yellow_eyes, red_neckerchief, sailor_collar, school_uniform, serafuku, shirt, smile, solo, tree, upper_body, wagashi, white_flower, glowing eyes, big eyes, red uniform, night, bioluminescence, moonlight, black background"
+        np = "easynegative, lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry, artist name, day, daylight, blue sky, white background"
         list_prompts = []
         list_prompts.append(pp)
         list_prompts.append(pp)
         list_prompts.append(pp)
-        list_prompts.append(pp2)
-        list_prompts.append(pp2)
-        list_prompts.append(pp3)
+        list_prompts.append(pp)
+        list_prompts.append(pp)
+        list_prompts.append(pp)
 
         fixed_seed = 1791072463
-        variance_threshold = 0.65
+        variance_threshold = 0.45
 
         fp_movie = "./out/movie_example2.mp4"
-        num_inference_steps = 20
+        num_inference_steps = 10
         depth_strength = 0.65  # Specifies how deep (in terms of diffusion iterations the first branching happens)
-        duration_single_trans = 2
+        duration_single_trans = 1
         max_frames = 10
 
         self.blending.set_negative_prompt(np)
+        self.blending.set_controlnet_guidance_percent(0.5)
+        self.blending.set_guidance_scale(7.0)
+
         self.blending.set_height(768)
 
         list_movie_parts = []
