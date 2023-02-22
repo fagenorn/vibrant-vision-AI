@@ -2,15 +2,13 @@
 
 [[package]]
 name = "accelerate"
-version = "0.16.0"
-description = "Accelerate"
+version = "0.17.0.dev0"
+description = ""
 category = "main"
 optional = false
 python-versions = ">=3.7.0"
-files = [
-    {file = "accelerate-0.16.0-py3-none-any.whl", hash = "sha256:27aa39b2076560b3ee674b9650c237c58520b3fd7907e5da1f922cf6868c1576"},
-    {file = "accelerate-0.16.0.tar.gz", hash = "sha256:d13e30f3e6debfb46cada7b931af85560619b6a6a839d0cafeeab6ed7c6a498d"},
-]
+files = []
+develop = false
 
 [package.dependencies]
 numpy = ">=1.17"
@@ -19,15 +17,11 @@ psutil = "*"
 pyyaml = "*"
 torch = ">=1.4.0"
 
-[package.extras]
-dev = ["black (>=22.0,<23.0)", "datasets", "deepspeed (<0.7.0)", "evaluate", "flake8 (>=3.8.3)", "hf-doc-builder (>=0.3.0)", "isort (>=5.5.4)", "parameterized", "pytest", "pytest-subtests", "pytest-xdist", "rich", "scikit-learn", "scipy", "tqdm", "transformers"]
-quality = ["black (>=22.0,<23.0)", "flake8 (>=3.8.3)", "hf-doc-builder (>=0.3.0)", "isort (>=5.5.4)"]
-rich = ["rich"]
-sagemaker = ["sagemaker"]
-test-dev = ["datasets", "deepspeed (<0.7.0)", "evaluate", "scikit-learn", "scipy", "tqdm", "transformers"]
-test-prod = ["parameterized", "pytest", "pytest-subtests", "pytest-xdist"]
-test-trackers = ["comet-ml", "tensorboard", "wandb"]
-testing = ["datasets", "deepspeed (<0.7.0)", "evaluate", "parameterized", "pytest", "pytest-subtests", "pytest-xdist", "scikit-learn", "scipy", "tqdm", "transformers"]
+[package.source]
+type = "git"
+url = "https://github.com/huggingface/accelerate"
+reference = "HEAD"
+resolved_reference = "38fd30e764ea87ef86e7d69fcba559c3605925b1"
 
 [[package]]
 name = "antlr4-python3-runtime"
@@ -1304,7 +1298,7 @@ files = [
 
 [[package]]
 name = "torch"
-version = "1.13.1+cu116"
+version = "1.13.1+cu117"
 description = "Tensors and Dynamic neural networks in Python with strong GPU acceleration"
 category = "main"
 optional = false
@@ -1313,7 +1307,7 @@ files = []
 
 [[package]]
 name = "torchaudio"
-version = "0.13.1+cu116"
+version = "0.13.1+cu117"
 description = "An audio package for PyTorch"
 category = "main"
 optional = false
@@ -1322,7 +1316,7 @@ files = []
 
 [[package]]
 name = "torchvision"
-version = "0.14.1+cu116"
+version = "0.14.1+cu117"
 description = "image and video datasets and models for torch deep learning"
 category = "main"
 optional = false
@@ -1505,4 +1499,4 @@ testing = ["flake8 (<5)", "func-timeout", "jaraco.functools", "jaraco.itertools"
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10.7,<3.11"
-content-hash = "7ea4575c505ff8025fb6fcb78f562b987276dcdb5cf55c40883704cea14ac05d"
+content-hash = "5a29e44adfaa2a82feafd9fe09ec1ad3020ddaeabe8c55d48e2849d1fc611a1f"

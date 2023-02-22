@@ -80,12 +80,7 @@ class Maestro:
         )
         # self.model.load_lora_checkpoint("./lora/openjourneyLora.safetensors", alpha=1.0)
         # self.model.load_lora_checkpoint("./lora/2bNierAutomataLora_v2b.safetensors", alpha=1.0)
-        self.model = self.model.to(device)
-        self.model.enable_xformers_memory_efficient_attention()
         self.upscaler = BlenderLatentUpscalePipeline.from_pretrained(upscaler_checkpoint, torch_dtype=dtype)
-        self.upscaler = self.upscaler.to(device)
-        self.upscaler.enable_xformers_memory_efficient_attention()
-        self.upscaler.enable_vae_slicing()
 
         self.blending = LatentBlending(self.model, self.upscaler)
 
@@ -125,10 +120,13 @@ class Maestro:
         # convert_controlnet_model(config_path, cn_path, 512, False, controlnet_path)
         # return
 
+        # import numpy as np
+        # from vibrant_vision.sd.animation.rife.RIFE import RIFE
+
         # img1 = np.array(Image.open("imgs/a.png"))
         # img2 = np.array(Image.open("imgs/b.png"))
 
-        # for i, t in enumerate(rife_interpolate(img1, img2, 30)):
+        # for i, t in enumerate(RIFE(img1, img2, 30)):
         #     Image.fromarray(t).save(f"imgs/{i}.png")
 
         # return
@@ -149,13 +147,13 @@ class Maestro:
         num_inference_steps = 10
         depth_strength = 0.65  # Specifies how deep (in terms of diffusion iterations the first branching happens)
         duration_single_trans = 1
-        max_frames = 10
+        max_frames = 3
 
         self.blending.set_negative_prompt(np)
-        self.blending.set_controlnet_guidance_percent(0.5)
+        self.blending.set_controlnet_guidance_percent(0.3)
         self.blending.set_guidance_scale(7.0)
 
-        self.blending.set_height(768)
+        # self.blending.set_height(768)
 
         list_movie_parts = []
         for i in range(len(list_prompts) - 1):

@@ -4,8 +4,10 @@ from typing import List, Optional, Union
 
 import numpy as np
 import torch
-from diffusers import DiffusionPipeline, UniPCMultistepScheduler, DPMSolverMultistepScheduler
+from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler, UniPCMultistepScheduler
+from diffusers.utils import is_accelerate_available, is_accelerate_version
 from safetensors.torch import load_file
+
 from vibrant_vision.sd import constants
 
 logger = logging.getLogger(__name__)
@@ -54,6 +56,32 @@ class BlenderPipeline(DiffusionPipeline):
 
         self.scheduler = DPMSolverMultistepScheduler.from_config(scheduler.config)
 
+        self._progress_bar_config = {
+            "desc": "Image Diffusion",
+        }
+
+    def enable_model_cpu_offload(self, gpu_id=0):
+        r"""
+        Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
+        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
+        method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
+        `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
+        """
+        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
+            from accelerate import cpu_offload_with_hook
+        else:
+            raise ImportError("`enable_model_offload` requires `accelerate v0.17.0` or higher.")
+
+        device = torch.device(f"cuda:{gpu_id}")
+
+        hook = None
+        for cpu_offloaded_model in [self.unet, self.vae, self.controlnet, self.text_encoder]:
+            _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
+
+        # We'll offload the last model manually.
+        self.final_offload_hook = hook
+
+    @torch.inference_mode()
     def __get_samples(self, latents):
         latents = 1 / 0.18215 * latents
         return self.vae.decode(latents).sample
@@ -124,14 +152,13 @@ class BlenderPipeline(DiffusionPipeline):
             for item in pair_keys:
                 visited.append(item)
 
-    @torch.no_grad()
     def decode_latents(self, latents):
         samples = self.__get_samples(latents)
         image = self.__get_images(samples)
 
         return image
 
-    @torch.no_grad()
+    @torch.inference_mode()
     def get_text_embeds(
         self,
         prompt,
@@ -189,7 +216,6 @@ class BlenderPipeline(DiffusionPipeline):
 
         return text_embeddings
 
-    @torch.no_grad()
     def controlnet_hint_conversion(self, controlnet_hint):
         channels = 3
         if isinstance(controlnet_hint, torch.Tensor):
@@ -229,7 +255,7 @@ class BlenderPipeline(DiffusionPipeline):
                     + f"({1}, {channels}, {self.height}, {self.width}) but is {controlnet_hint.shape}"
                 )
 
-    @torch.no_grad()
+    @torch.inference_mode()
     def __call__(
         self,
         prompt_embeds,
@@ -304,14 +330,17 @@ class BlenderPipeline(DiffusionPipeline):
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
 
-        if return_image:
-            image = self.decode_latents(latents)
-            return image
-        else:
-            return list_latents_out
+        try:
+            if return_image:
+                image = self.decode_latents(latents)
+                return image
+            else:
+                return list_latents_out
+        finally:
+            if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
+                self.final_offload_hook.offload()
 
 
-@torch.no_grad()
 def interpolate_spherical(p0, p1, fract_mixing: float):
     r"""
     Helper function to correctly mix two random variables using spherical interpolation.
@@ -356,7 +385,6 @@ def interpolate_spherical(p0, p1, fract_mixing: float):
     return interp
 
 
-@torch.no_grad()
 def offset_latents(latents, offset_coords_2d):
     """
     Helper function to wrap latents around the image.
@@ -516,6 +544,7 @@ def pad_tokens_and_weights(tokens, weights, max_length, bos, eos, no_boseos_midd
     return tokens, weights
 
 
+@torch.inference_mode()
 def get_unweighted_text_embeddings(
     pipe,
     text_input: torch.Tensor,
@@ -635,7 +664,7 @@ def get_weighted_text_embeddings(
         no_boseos_middle=no_boseos_middle,
         chunk_length=pipe.tokenizer.model_max_length,
     )
-    prompt_tokens = torch.tensor(prompt_tokens, dtype=torch.long, device=pipe.device)
+    prompt_tokens = torch.tensor(prompt_tokens, dtype=torch.long, device=device)
     if uncond_prompt is not None:
         uncond_tokens, uncond_weights = pad_tokens_and_weights(
             uncond_tokens,
@@ -646,7 +675,7 @@ def get_weighted_text_embeddings(
             no_boseos_middle=no_boseos_middle,
             chunk_length=pipe.tokenizer.model_max_length,
         )
-        uncond_tokens = torch.tensor(uncond_tokens, dtype=torch.long, device=pipe.device)
+        uncond_tokens = torch.tensor(uncond_tokens, dtype=torch.long, device=device)
 
     # get the embeddings
     text_embeddings = get_unweighted_text_embeddings(
@@ -655,7 +684,7 @@ def get_weighted_text_embeddings(
         pipe.tokenizer.model_max_length,
         no_boseos_middle=no_boseos_middle,
     )
-    prompt_weights = torch.tensor(prompt_weights, dtype=text_embeddings.dtype, device=pipe.device)
+    prompt_weights = torch.tensor(prompt_weights, dtype=text_embeddings.dtype, device=device)
     if uncond_prompt is not None:
         uncond_embeddings = get_unweighted_text_embeddings(
             pipe,
@@ -663,7 +692,7 @@ def get_weighted_text_embeddings(
             pipe.tokenizer.model_max_length,
             no_boseos_middle=no_boseos_middle,
         )
-        uncond_weights = torch.tensor(uncond_weights, dtype=uncond_embeddings.dtype, device=pipe.device)
+        uncond_weights = torch.tensor(uncond_weights, dtype=uncond_embeddings.dtype, device=device)
 
     # assign weights to the prompts and normalize in the sense of mean
     # TODO: should we normalize by chunk or in a whole (current implementation)?

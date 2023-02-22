@@ -10,7 +10,6 @@ import lpips
 import numpy as np
 import torch
 import torch.nn.functional as F
-from click import prompt
 from PIL import Image
 from tqdm.auto import tqdm
 
@@ -22,6 +21,10 @@ from vibrant_vision.sd.models.controlnet.controlnet_hinter import hint_canny
 device = constants.device
 dtype = torch.float16
 TRANSLATION_SCALE = 1.0 / 200.0
+
+if torch.cuda.is_available():
+    torch.backends.cudnn.enabled = False
+    torch.backends.cudnn.benchmark = False
 
 
 class LatentBlending:
@@ -87,6 +90,15 @@ class LatentBlending:
         self.controlnet_guidance_percent = 0.5
 
         self.lpips = lpips.LPIPS(net="alex").cuda(device)
+
+        self.sdh.to(device)
+        self.sdh.enable_xformers_memory_efficient_attention()
+        self.sdh.enable_model_cpu_offload()
+        if self.upscaler is not None:
+            self.upscaler.to(device)
+            self.upscaler.enable_xformers_memory_efficient_attention()
+            self.upscaler.enable_vae_slicing()
+            self.upscaler.enable_sequential_cpu_offload()
 
     def init_mode(self):
         self.mode = "standard"
@@ -181,7 +193,6 @@ class LatentBlending:
         """
         prompt = prompt.replace("_", " ")
         self.prompt1 = prompt
-        self.text_embedding1 = self.get_text_embeddings(self.prompt1)
 
     def set_prompt2(self, prompt: str):
         r"""
@@ -192,7 +203,6 @@ class LatentBlending:
         """
         prompt = prompt.replace("_", " ")
         self.prompt2 = prompt
-        self.text_embedding2 = self.get_text_embeddings(self.prompt2)
 
     def set_image1(self, image: Image):
         r"""
@@ -251,8 +261,11 @@ class LatentBlending:
         """
 
         # Sanity checks first
-        assert self.text_embedding1 is not None, "Set the first text embedding with .set_prompt1(...) before"
-        assert self.text_embedding2 is not None, "Set the second text embedding with .set_prompt2(...) before"
+        assert self.prompt1 is not None, "Set the first text embedding with .set_prompt1(...) before"
+        assert self.prompt2 is not None, "Set the second text embedding with .set_prompt2(...) before"
+
+        self.text_embedding1 = self.get_text_embeddings(self.prompt1)
+        self.text_embedding2 = self.get_text_embeddings(self.prompt2)
 
         # Random seeds
         if fixed_seed is not None:
@@ -562,11 +575,14 @@ class LatentBlending:
         self.tree_fracts.insert(b_parent1 + 1, fract_mixing)
         self.tree_idx_injection.insert(b_parent1 + 1, idx_injection)
 
+    @torch.inference_mode()
     def upscale_decode_latents(
         self,
     ):
         if self.upscaler is None:
             return
+
+        torch.cuda.empty_cache()
 
         batch_size = 4
         result = []
@@ -575,7 +591,7 @@ class LatentBlending:
             args = [iter(iterable)] * n
             return zip_longest(*args, fillvalue=fillvalue)
 
-        for latents in grouper(self.tree_latents, batch_size):
+        for latents in tqdm(grouper(self.tree_latents, batch_size), desc="Upscaling"):
             latents = [latent[-1] for latent in latents if latent is not None]
             latents = torch.cat(latents, dim=0)
             images = self.upscaler(
@@ -652,7 +668,7 @@ class LatentBlending:
 
         return noise
 
-    @torch.no_grad()
+    @torch.inference_mode()
     def run_diffusion(
         self,
         list_conditionings,
@@ -741,7 +757,6 @@ class LatentBlending:
 
         return offset_coords_2d.half()
 
-    @torch.no_grad()
     def get_mixed_conditioning(self, fract_mixing):
         if self.mode == "standard":
             text_embeddings_mix = interpolate_linear(self.text_embedding1, self.text_embedding2, fract_mixing)
@@ -750,12 +765,10 @@ class LatentBlending:
             raise ValueError(f"mix_conditioning: unknown mode {self.mode}")
         return list_conditionings
 
-    @torch.no_grad()
     def get_mixed_control_hint(self, fract_mixing):
         s = interpolate_linear(self.control_hint_1, self.control_hint_2, fract_mixing)
         return s
 
-    @torch.no_grad()
     def get_text_embeddings(self, prompt: str):
         r"""
         Computes the text embeddings provided a string with a prompts.
@@ -765,7 +778,7 @@ class LatentBlending:
                 ABC trending on artstation painted by Old Greg.
         """
 
-        return self.sdh.get_text_embeds(prompt=prompt, negative_prompt=self.negative_prompt)
+        return self.sdh.get_text_embeds(prompt=prompt, negative_prompt=self.negative_prompt).to(device)
 
     def write_imgs_transition(self, dp_img):
         r"""
@@ -797,6 +810,8 @@ class LatentBlending:
                 fps of the movie
 
         """
+        # Free GPU memory
+        torch.cuda.empty_cache()
 
         # Let's get more cheap frames via linear interpolation (duration_transition*fps frames)
         imgs_transition_ext = add_frames_linear_interp(self.tree_final_imgs, duration_transition, fps)
@@ -947,7 +962,6 @@ def get_closest_idx(
     return b_parent1, b_parent2
 
 
-@torch.no_grad()
 def interpolate_spherical(p0, p1, fract_mixing: float):
     r"""
     Helper function to correctly mix two random variables using spherical interpolation.
@@ -1092,63 +1106,65 @@ def add_frames_linear_interp(
 
     nmb_frames_to_insert = nmb_frames_to_insert.astype(np.int32)
     list_imgs_interp = []
-    with tqdm(total=len(list_imgs_float) - 1, desc="STAGE linear interp") as pbar:
-        for i in range(len(list_imgs_float) - 1):  # , desc="STAGE linear interp"):
-            img0 = list_imgs_float[i]
-            img1 = list_imgs_float[i + 1]
-            list_imgs_interp.append(img0.astype(np.uint8))
-            list_fracts_linblend = np.linspace(0, 1, nmb_frames_to_insert[i] + 2)[1:-1]
-            output = rife_interpolate(img0, img1, len(list_fracts_linblend))
-            list_imgs_interp.extend(output)
-            pbar.update()
-            # for fract_linblend in list_fracts_linblend:
-            # img_blend = interpolate_linear(img0, img1, fract_linblend).astype(np.uint8)
-            # list_imgs_interp.append(img_blend.astype(np.uint8))
 
-        if i == len(list_imgs_float) - 2:
-            list_imgs_interp.append(img1.astype(np.uint8))
+    for i in tqdm(range(len(list_imgs_float) - 1), desc="STAGE linear interp"):
+        img0 = list_imgs_float[i]
+        img1 = list_imgs_float[i + 1]
+        list_imgs_interp.append(img0.astype(np.uint8))
+        list_fracts_linblend = np.linspace(0, 1, nmb_frames_to_insert[i] + 2)[1:-1]
+        output = rife_interpolate(img0, img1, len(list_fracts_linblend))
+        list_imgs_interp.extend(output)
+        # for fract_linblend in list_fracts_linblend:
+        # img_blend = interpolate_linear(img0, img1, fract_linblend).astype(np.uint8)
+        # list_imgs_interp.append(img_blend.astype(np.uint8))
 
+    if i == len(list_imgs_float) - 2:
+        list_imgs_interp.append(img1.astype(np.uint8))
     return list_imgs_interp
 
 
-from vibrant_vision.sd.animation.rife.RIFE_HDv3 import Model as RIFE
+# from vibrant_vision.sd.animation.rife.RIFE_HDv3 import Model as RIFE
 
-rife_model = RIFE(arbitrary=True)
-rife_model.load_model("./vibrant_vision/sd/animation/rife/flownet-v6-m.pkl")
-rife_model.eval()
-rife_model.device()
+# rife_model = RIFE(arbitrary=True)
+# rife_model.load_model("./vibrant_vision/sd/animation/rife/flownet-v6-m.pkl")
+# rife_model.eval()
+# rife_model.device()
 
 
-def rife_interpolate(img1, img2, tot_frame, scale=1.0):
-    h, w, _ = img1.shape
-    tmp = int(32 * scale)
-    ph = ((h - 1) // tmp + 1) * tmp
-    pw = ((w - 1) // tmp + 1) * tmp
-    padding = (0, pw - w, 0, ph - h)
+from vibrant_vision.sd.animation.rife.RIFE import RIFE
 
-    i1 = torch.from_numpy(np.transpose(img1, (2, 0, 1))).to(device).unsqueeze(0).float() / 255.0
-    i2 = torch.from_numpy(np.transpose(img2, (2, 0, 1))).to(device).unsqueeze(0).float() / 255.0
-    i1 = F.pad(i1, padding)
-    i2 = F.pad(i2, padding)
 
-    def execute(i1, i2, n):
-        with torch.no_grad():
-            mid = rife_model.inference(i1, i2, scale=scale)
-            if n == 1:
-                return [mid]
-            first_half = execute(i1, mid, n // 2)
-            second_half = execute(mid, i2, n // 2)
-            if n % 2:
-                return [*first_half, mid, *second_half]
-            return [*first_half, *second_half]
+def rife_interpolate(img0, img1, tot_frame, scale=1.0):
+    return RIFE(img0, img1, tot_frame, scale=scale)
 
-    output = execute(i1, i2, tot_frame)
-    result = []
-    for mid in output:
-        mid = (mid[0] * 255.0).byte().cpu().numpy().transpose(1, 2, 0)
-        mid = mid[:h, :w]
-        result.append(mid)
-    return result
+    # h, w, _ = img1.shape
+    # tmp = int(32 * scale)
+    # ph = ((h - 1) // tmp + 1) * tmp
+    # pw = ((w - 1) // tmp + 1) * tmp
+    # padding = (0, pw - w, 0, ph - h)
+
+    # i1 = torch.from_numpy(np.transpose(img1, (2, 0, 1))).to(device).unsqueeze(0).float() / 255.0
+    # i2 = torch.from_numpy(np.transpose(img2, (2, 0, 1))).to(device).unsqueeze(0).float() / 255.0
+    # i1 = F.pad(i1, padding)
+    # i2 = F.pad(i2, padding)
+
+    # def execute(i1, i2, n):
+    #     mid = rife_model.inference(i1, i2, scale=scale)
+    #     if n == 1:
+    #         return [mid]
+    #     first_half = execute(i1, mid, n // 2)
+    #     second_half = execute(mid, i2, n // 2)
+    #     if n % 2:
+    #         return [*first_half, mid, *second_half]
+    #     return [*first_half, *second_half]
+
+    # output = execute(i1, i2, tot_frame)
+    # result = []
+    # for mid in output:
+    #     mid = (mid[0] * 255.0).byte().cpu().numpy().transpose(1, 2, 0)
+    #     mid = mid[:h, :w]
+    #     result.append(mid)
+    # return result
 
 
 def slerp(low, high, val):
