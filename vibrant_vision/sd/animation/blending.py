@@ -810,9 +810,6 @@ class LatentBlending:
                 fps of the movie
 
         """
-        # Free GPU memory
-        torch.cuda.empty_cache()
-
         # Let's get more cheap frames via linear interpolation (duration_transition*fps frames)
         imgs_transition_ext = add_frames_linear_interp(self.tree_final_imgs, duration_transition, fps)
         h, w = imgs_transition_ext[0].shape[:2]
@@ -1108,6 +1105,7 @@ def add_frames_linear_interp(
     list_imgs_interp = []
 
     for i in tqdm(range(len(list_imgs_float) - 1), desc="STAGE linear interp"):
+        torch.cuda.empty_cache()
         img0 = list_imgs_float[i]
         img1 = list_imgs_float[i + 1]
         list_imgs_interp.append(img0.astype(np.uint8))

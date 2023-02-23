@@ -22,7 +22,9 @@ lpips = "^0.1.4"
 ffmpeg-python = "^0.2.0"
 omegaconf = "^2.3.0"
 safetensors = "^0.2.8"
-accelerate = {git = "https://github.com/huggingface/accelerate"}
+accelerate = { git = "https://github.com/huggingface/accelerate" }
+clip-interrogator = "^0.5.4"
+pytorch-lightning = "^1.9.3"
 
 [tool.poetry.group.dev.dependencies]
 black = "^22.12.0"
@@ -34,6 +36,9 @@ format = "black ."
 torch-install = "python -m pip install torch==1.13.1+cu117 torchvision==0.14.1+cu117 torchaudio==0.13.1+cu117 -f https://download.pytorch.org/whl/torch_stable.html"
 start = "poetry run python main.py"
 convert_ckpt = "poetry run python ./scripts/convert_original_stable_diffusion_to_diffusers.py"
+create_dataset = "poetry run python ./training/dataset/canny_animate/create_dataset.py"
+train = "poetry run python ./training/dataset/canny_animate/ControlNet/train.py"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

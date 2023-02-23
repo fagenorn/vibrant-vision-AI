@@ -146,8 +146,8 @@ class Maestro:
         fp_movie = "./out/movie_example2.mp4"
         num_inference_steps = 10
         depth_strength = 0.65  # Specifies how deep (in terms of diffusion iterations the first branching happens)
-        duration_single_trans = 1
-        max_frames = 3
+        duration_single_trans = 2
+        max_frames = 25
 
         self.blending.set_negative_prompt(np)
         self.blending.set_controlnet_guidance_percent(0.3)
