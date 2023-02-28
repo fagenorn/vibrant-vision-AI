@@ -2,7 +2,6 @@ import os
 import time
 from asyncio.log import logger
 from itertools import zip_longest
-from re import L
 from typing import List, Optional, Union
 
 import cv2
@@ -16,6 +15,7 @@ from tqdm.auto import tqdm
 import vibrant_vision.sd.animation.py3d_tools as p3d
 from vibrant_vision.sd import constants
 from vibrant_vision.sd.animation.movie import MovieSaver
+from vibrant_vision.sd.animation.rife.RIFE import RIFE
 from vibrant_vision.sd.models.controlnet.controlnet_hinter import hint_canny
 
 device = constants.device
@@ -85,8 +85,7 @@ class LatentBlending:
         self.dt_per_diff = 0
         self.spatial_mask = None
 
-        self.control_hint_1 = None
-        self.control_hint_2 = None
+        self.control_hint = None
         self.controlnet_guidance_percent = 0.5
 
         self.lpips = lpips.LPIPS(net="alex").cuda(device)
@@ -137,11 +136,8 @@ class LatentBlending:
         control_hint = control_hint.permute(0, 3, 1, 2)
         return control_hint
 
-    def set_control_image_1(self, image):
-        self.control_hint_1 = self.__set_control_image(image)
-
-    def set_control_image_2(self, image):
-        self.control_hint_2 = self.__set_control_image(image)
+    def set_control_image(self, image):
+        self.control_hint = self.__set_control_image(image)
 
     def set_guidance_mid_dampening(self, fract_mixing):
         r"""
@@ -283,7 +279,7 @@ class LatentBlending:
         if not recycle_img1 or len(self.tree_latents[0]) != self.num_inference_steps:
             list_latents1 = self.compute_latents1()
             img1 = self.sdh.decode_latents(list_latents1[-1])
-            self.set_control_image_1(img1)
+            self.set_control_image(img1)
         else:
             list_latents1 = self.tree_latents[0]
 
@@ -291,7 +287,6 @@ class LatentBlending:
         if not recycle_img2 or len(self.tree_latents[-1]) != self.num_inference_steps:
             list_latents2 = self.compute_latents2()
             img2 = self.sdh.decode_latents(list_latents2[-1])
-            self.set_control_image_2(img2)
         else:
             list_latents2 = self.tree_latents[-1]
 
@@ -324,7 +319,8 @@ class LatentBlending:
                 fract_mixing, b_parent1, b_parent2 = self.get_mixing_parameters(idx_injection)
                 self.set_guidance_mid_dampening(fract_mixing)
                 list_latents = self.compute_latents_mix(fract_mixing, b_parent1, b_parent2, idx_injection)
-                self.insert_into_tree(fract_mixing, idx_injection, list_latents)
+                img = self.insert_into_tree(fract_mixing, idx_injection, list_latents)
+                self.set_control_image(img)
 
         self.upscale_decode_latents()
         return self.tree_final_imgs
@@ -569,11 +565,14 @@ class LatentBlending:
             list_latents: list
                 list of the latents to be inserted
         """
+        img = self.sdh.decode_latents(list_latents[-1])
         b_parent1, b_parent2 = get_closest_idx(fract_mixing, self.tree_fracts)
         self.tree_latents.insert(b_parent1 + 1, list_latents)
-        self.tree_final_imgs.insert(b_parent1 + 1, self.sdh.decode_latents(list_latents[-1]))
+        self.tree_final_imgs.insert(b_parent1 + 1, img)
         self.tree_fracts.insert(b_parent1 + 1, fract_mixing)
         self.tree_idx_injection.insert(b_parent1 + 1, idx_injection)
+
+        return img
 
     @torch.inference_mode()
     def upscale_decode_latents(
@@ -766,8 +765,8 @@ class LatentBlending:
         return list_conditionings
 
     def get_mixed_control_hint(self, fract_mixing):
-        s = interpolate_linear(self.control_hint_1, self.control_hint_2, fract_mixing)
-        return s
+        # s = interpolate_linear(self.control_hint_1, self.control_hint_2, fract_mixing)
+        return self.control_hint
 
     def get_text_embeddings(self, prompt: str):
         r"""
@@ -906,9 +905,6 @@ class LatentBlending:
         # Move over prompts and text embeddings
         self.prompt1 = self.prompt2
         self.text_embedding1 = self.text_embedding2
-
-        # Move over control hints
-        self.control_hint_1 = self.control_hint_2
 
         # Final cleanup for extra sanity
         self.tree_final_imgs = []
@@ -1121,48 +1117,8 @@ def add_frames_linear_interp(
     return list_imgs_interp
 
 
-# from vibrant_vision.sd.animation.rife.RIFE_HDv3 import Model as RIFE
-
-# rife_model = RIFE(arbitrary=True)
-# rife_model.load_model("./vibrant_vision/sd/animation/rife/flownet-v6-m.pkl")
-# rife_model.eval()
-# rife_model.device()
-
-
-from vibrant_vision.sd.animation.rife.RIFE import RIFE
-
-
 def rife_interpolate(img0, img1, tot_frame, scale=1.0):
     return RIFE(img0, img1, tot_frame, scale=scale)
-
-    # h, w, _ = img1.shape
-    # tmp = int(32 * scale)
-    # ph = ((h - 1) // tmp + 1) * tmp
-    # pw = ((w - 1) // tmp + 1) * tmp
-    # padding = (0, pw - w, 0, ph - h)
-
-    # i1 = torch.from_numpy(np.transpose(img1, (2, 0, 1))).to(device).unsqueeze(0).float() / 255.0
-    # i2 = torch.from_numpy(np.transpose(img2, (2, 0, 1))).to(device).unsqueeze(0).float() / 255.0
-    # i1 = F.pad(i1, padding)
-    # i2 = F.pad(i2, padding)
-
-    # def execute(i1, i2, n):
-    #     mid = rife_model.inference(i1, i2, scale=scale)
-    #     if n == 1:
-    #         return [mid]
-    #     first_half = execute(i1, mid, n // 2)
-    #     second_half = execute(mid, i2, n // 2)
-    #     if n % 2:
-    #         return [*first_half, mid, *second_half]
-    #     return [*first_half, *second_half]
-
-    # output = execute(i1, i2, tot_frame)
-    # result = []
-    # for mid in output:
-    #     mid = (mid[0] * 255.0).byte().cpu().numpy().transpose(1, 2, 0)
-    #     mid = mid[:h, :w]
-    #     result.append(mid)
-    # return result
 
 
 def slerp(low, high, val):

@@ -308,18 +308,34 @@ class BlenderPipeline(DiffusionPipeline):
                     latents = interpolate_spherical(latents, list_latents_mixing[i - 1], 1 - spatial_mask)
 
                 noise_pred = None
-                stop_controlnet_guidance = (
-                    i - idx_start >= (self.num_inference_steps - idx_start) * controlnet_guidance_percent
-                )
-                if controlnet_hint is not None and not stop_controlnet_guidance:
-                    control = self.controlnet(
-                        latent_model_input, step, encoder_hidden_states=prompt_embeds, controlnet_hint=controlnet_hint
+                if controlnet_hint is not None:
+                    down_block_res_samples, mid_block_res_sample = self.controlnet(
+                        latent_model_input,
+                        step,
+                        encoder_hidden_states=prompt_embeds,
+                        controlnet_cond=controlnet_hint,
+                        return_dict=False,
                     )
+                    down_block_res_samples = [
+                        down_block_res_sample * controlnet_guidance_percent
+                        for down_block_res_sample in down_block_res_samples
+                    ]
+                    mid_block_res_sample *= controlnet_guidance_percent
+
+                    # predict the noise residual
                     noise_pred = self.unet(
-                        latent_model_input, step, encoder_hidden_states=prompt_embeds, control=control
+                        latent_model_input,
+                        step,
+                        encoder_hidden_states=prompt_embeds,
+                        down_block_additional_residuals=down_block_res_samples,
+                        mid_block_additional_residual=mid_block_res_sample,
                     ).sample
                 else:
-                    noise_pred = self.unet(latent_model_input, step, encoder_hidden_states=prompt_embeds).sample
+                    noise_pred = self.unet(
+                        latent_model_input,
+                        step,
+                        encoder_hidden_states=prompt_embeds,
+                    ).sample
 
                 noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                 noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)

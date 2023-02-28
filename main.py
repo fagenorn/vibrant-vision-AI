@@ -4,7 +4,7 @@ from vibrant_vision.general.logging import setup_logging
 
 def main():
     maestro = Maestro(fps=30)
-    maestro.test()
+    maestro.bad_apple()
     # model = Model()
     # result = model.predict("a photo of an astronaut riding a horse on mars")
 

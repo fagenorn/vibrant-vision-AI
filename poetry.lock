@@ -408,35 +408,36 @@ files = [
 
 [[package]]
 name = "diffusers"
-version = "0.13.1"
+version = "0.13.0.dev0"
 description = "Diffusers"
 category = "main"
 optional = false
 python-versions = ">=3.7.0"
-files = [
-    {file = "diffusers-0.13.1-py3-none-any.whl", hash = "sha256:e16a0659731b1b5298526fafdcb8ee5633f6a3fc1ece8bf5c06025e18ca8851e"},
-    {file = "diffusers-0.13.1.tar.gz", hash = "sha256:29b67a1ef34d9f5b05c3eab0a496697dab249652d298da74255b8aa4fc4f8e4c"},
-]
+files = []
+develop = false
 
 [package.dependencies]
-accelerate = {version = ">=0.11.0", optional = true, markers = "extra == \"torch\""}
 filelock = "*"
 huggingface-hub = ">=0.10.0"
-importlib-metadata = "*"
+importlib_metadata = "*"
 numpy = "*"
 Pillow = "*"
 regex = "!=2019.12.17"
 requests = "*"
-torch = {version = ">=1.4", optional = true, markers = "extra == \"torch\""}
 
 [package.extras]
-dev = ["Jinja2", "accelerate (>=0.11.0)", "black (>=23.1,<24.0)", "datasets", "flax (>=0.4.1)", "hf-doc-builder (>=0.3.0)", "isort (>=5.5.4)", "jax (>=0.2.8,!=0.3.2)", "jaxlib (>=0.1.65)", "k-diffusion (>=0.0.12)", "librosa", "parameterized", "pytest", "pytest-timeout", "pytest-xdist", "ruff (>=0.0.241)", "safetensors", "scipy", "sentencepiece (>=0.1.91,!=0.1.92)", "tensorboard", "torch (>=1.4)", "torchvision", "transformers (>=4.25.1)"]
+dev = ["Jinja2", "accelerate (>=0.11.0)", "black (>=23.1,<24.0)", "datasets", "hf-doc-builder (>=0.3.0)", "isort (>=5.5.4)", "k-diffusion (>=0.0.12)", "librosa", "parameterized", "pytest", "pytest-timeout", "pytest-xdist", "ruff (>=0.0.241)", "safetensors", "scipy", "sentencepiece (>=0.1.91,!=0.1.92)", "tensorboard", "torch (>=1.4)", "torchvision", "transformers (>=4.25.1)"]
 docs = ["hf-doc-builder (>=0.3.0)"]
-flax = ["flax (>=0.4.1)", "jax (>=0.2.8,!=0.3.2)", "jaxlib (>=0.1.65)"]
 quality = ["black (>=23.1,<24.0)", "hf-doc-builder (>=0.3.0)", "isort (>=5.5.4)", "ruff (>=0.0.241)"]
 test = ["Jinja2", "datasets", "k-diffusion (>=0.0.12)", "librosa", "parameterized", "pytest", "pytest-timeout", "pytest-xdist", "safetensors", "scipy", "sentencepiece (>=0.1.91,!=0.1.92)", "torchvision", "transformers (>=4.25.1)"]
 torch = ["accelerate (>=0.11.0)", "torch (>=1.4)"]
 training = ["Jinja2", "accelerate (>=0.11.0)", "datasets", "tensorboard"]
+
+[package.source]
+type = "git"
+url = "https://github.com/takuma104/diffusers"
+reference = "controlnet"
+resolved_reference = "53f4523b0ea8136de6d8d3d62284ce80434712f0"
 
 [[package]]
 name = "einops"
@@ -1007,6 +1008,32 @@ tqdm = "*"
 
 [package.extras]
 training = ["braceexpand", "fsspec", "ftfy", "huggingface-hub", "pandas", "regex", "timm", "torch (>=1.9.0)", "torchvision", "tqdm", "transformers", "webdataset (>=0.2.5)"]
+
+[[package]]
+name = "opencv-contrib-python"
+version = "4.7.0.72"
+description = "Wrapper package for OpenCV python bindings."
+category = "main"
+optional = false
+python-versions = ">=3.6"
+files = [
+    {file = "opencv-contrib-python-4.7.0.72.tar.gz", hash = "sha256:ab33fa2385ec7e70b9d484293f6f1f3707933045af4d18bb3b0a0290fa44370f"},
+    {file = "opencv_contrib_python-4.7.0.72-cp37-abi3-macosx_10_16_x86_64.whl", hash = "sha256:698c6b6203831f6573e04258be197e3bfde97fb7279fb614e39d75a8bd5818fb"},
+    {file = "opencv_contrib_python-4.7.0.72-cp37-abi3-macosx_11_0_arm64.whl", hash = "sha256:8cad628ea6cc493f6c56140d7edc86f7ed8de528e18e44311e42b390a7d9996e"},
+    {file = "opencv_contrib_python-4.7.0.72-cp37-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:d1fef5ae16dfa73022749165e029e85eb0f399503470c0df1f84c95633f4ae52"},
+    {file = "opencv_contrib_python-4.7.0.72-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:b54c2e8bb636e367d29bde48fae2aa52c43b782265cf65838a1fe852006cdd94"},
+    {file = "opencv_contrib_python-4.7.0.72-cp37-abi3-win32.whl", hash = "sha256:641ca83b34a9d3e8ef2da70533c6e4e3f076ffb0db69b963d82899cc53e9b3c2"},
+    {file = "opencv_contrib_python-4.7.0.72-cp37-abi3-win_amd64.whl", hash = "sha256:fefc5f7f1eef3125f78242afe5c989057b36c2f015619698c741b04f4503f913"},
+]
+
+[package.dependencies]
+numpy = [
+    {version = ">=1.21.2", markers = "python_version >= \"3.10\""},
+    {version = ">=1.21.4", markers = "python_version >= \"3.10\" and platform_system == \"Darwin\""},
+    {version = ">=1.19.3", markers = "python_version >= \"3.6\" and platform_system == \"Linux\" and platform_machine == \"aarch64\" or python_version >= \"3.9\""},
+    {version = ">=1.17.0", markers = "python_version >= \"3.7\""},
+    {version = ">=1.17.3", markers = "python_version >= \"3.8\""},
+]
 
 [[package]]
 name = "opencv-python"
@@ -2242,4 +2269,4 @@ testing = ["flake8 (<5)", "func-timeout", "jaraco.functools", "jaraco.itertools"
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10.7,<3.11"
-content-hash = "5fa53d51ea8e717eb0f9f4f44848f4cf6aa33ed09b25cf9c2a5d8b605d07fb5f"
+content-hash = "27ccbaf23515b92d9437ff366cdbb98a4e821a7752cf7992211df9f70d1bdd0d"

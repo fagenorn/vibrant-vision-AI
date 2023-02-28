@@ -2,6 +2,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
+from diffusers import AutoencoderKL, StableDiffusionControlNetPipeline, UNet2DConditionModel
 from PIL import Image
 
 import vibrant_vision.sd.animation.movie as movie
@@ -10,17 +11,54 @@ from vibrant_vision.sd import constants
 from vibrant_vision.sd.animation.blending import LatentBlending, rife_interpolate
 from vibrant_vision.sd.animation.keyframes import KeyFrames
 from vibrant_vision.sd.animation.wrap import FrameWrapper
-from vibrant_vision.sd.models.ImageModel import BlenderPipeline
 from vibrant_vision.sd.models.controlnet.unet_2d_condition import UNet2DConditionModel as CustomUNet2DConditionModel
+from vibrant_vision.sd.models.ImageModel import BlenderPipeline
 from vibrant_vision.sd.models.UpscalerModel import BlenderLatentUpscalePipeline
+from safetensors import safe_open
+from vibrant_vision.sd.models.deep_danbooru_model import DanbooruInterogator
 
 logger = get_logger(__name__)
 device = constants.device
-checkpoint = "./models/ned"
+checkpoint = "./models/aom3/"
 revision = "main"
 dtype = torch.float16
 controlnet_checkpoint = "takuma104/control_sd15_canny"
 upscaler_checkpoint = "stabilityai/sd-x2-latent-upscaler"
+
+
+def load_learned_embed_in_clip_pt(learned_embeds_path, text_encoder, tokenizer, token):
+    loaded_learned_embeds = {}
+    with safe_open(learned_embeds_path, framework="pt", device="cpu") as f:
+        for key in f.keys():
+            loaded_learned_embeds[key] = f.get_tensor(key)
+
+    # print(loaded_learned_embeds.keys()  )
+    # separate token and the embeds
+    # string_to_param = loaded_learned_embeds["string_to_param"]
+    # embeds = next(iter(string_to_param.items()))[1]
+    embeds = loaded_learned_embeds["emb_params"]
+
+    # cast to dtype of text_encoder
+    dtype = text_encoder.get_input_embeddings().weight.dtype
+    embeds.to(dtype)
+
+    tokens = [token] * embeds.shape[0]
+
+    # add the token in tokenizer
+    num_added_tokens = tokenizer.add_tokens(tokens)
+    if num_added_tokens == 0:
+        raise ValueError(
+            f"The tokenizer already contains the token {token}. Please pass a different `token` that is not already in the tokenizer."
+        )
+
+    # resize the token embeddings
+    text_encoder.resize_token_embeddings(len(tokenizer))
+
+    # get the id for the token and assign the embeds
+    token_ids = tokenizer.convert_tokens_to_ids(tokens)
+
+    for token_id, embed in zip(token_ids, embeds):
+        text_encoder.get_input_embeddings().weight.data[token_id] = embed
 
 
 class Maestro:
@@ -67,22 +105,42 @@ class Maestro:
             self.seed_keys[i] = i
 
         logger.info("Initializing model...")
-        controlnet = CustomUNet2DConditionModel.from_pretrained(
-            controlnet_checkpoint, subfolder="controlnet", torch_dtype=dtype
-        )
-        unet = CustomUNet2DConditionModel.from_pretrained(checkpoint, subfolder="unet", torch_dtype=dtype)
-        self.model = BlenderPipeline.from_pretrained(
+        # controlnet = CustomUNet2DConditionModel.from_pretrained(
+        #     controlnet_checkpoint, subfolder="controlnet", torch_dtype=dtype
+        # )
+        # unet = CustomUNet2DConditionModel.from_pretrained(checkpoint, subfolder="unet", torch_dtype=dtype)
+        vae = AutoencoderKL.from_pretrained(
             checkpoint,
-            revision=revision,
+            subfolder="vae",
             torch_dtype=dtype,
-            controlnet=controlnet,
+        )
+        unet = UNet2DConditionModel.from_pretrained(
+            checkpoint,
+            subfolder="unet",
+            torch_dtype=dtype,
+        )
+        self.model = BlenderPipeline.from_pretrained(
+            controlnet_checkpoint,
+            # revision=revision,
+            torch_dtype=dtype,
+            vae=vae,
             unet=unet,
         )
+
+        load_learned_embed_in_clip_pt(
+            f"embeds/easynegative.safetensors", self.model.text_encoder, self.model.tokenizer, f"<easynegative>"
+        )
+
         # self.model.load_lora_checkpoint("./lora/openjourneyLora.safetensors", alpha=1.0)
         # self.model.load_lora_checkpoint("./lora/2bNierAutomataLora_v2b.safetensors", alpha=1.0)
-        self.upscaler = BlenderLatentUpscalePipeline.from_pretrained(upscaler_checkpoint, torch_dtype=dtype)
+        self.upscaler = BlenderLatentUpscalePipeline.from_pretrained(
+            upscaler_checkpoint,
+            torch_dtype=dtype,
+        )
 
         self.blending = LatentBlending(self.model, self.upscaler)
+
+        self.danbooru_interrogator = DanbooruInterogator("models/model-resnet_custom_v3.pt")
 
         self.wrap = FrameWrapper(
             self.translation_x_keys,
@@ -112,6 +170,54 @@ class Maestro:
 
             self.target_latents_keys[frame] = sample.detach().cpu().numpy()
 
+    def danbooru_blip(self, image: np.ndarray):
+        image = Image.fromarray(image).convert("RGB")
+        image = image.resize((512, 512))
+        return self.danbooru_interrogator.predict(image)
+
+    def bad_apple(self):
+        import cv2
+
+        logger.info("Starting bad apple...")
+
+        # open video
+        video = cv2.VideoCapture("bad_apple.mp4")
+        fps = video.get(cv2.CAP_PROP_FPS)
+        total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+        logger.info(f"Video fps: {fps}")
+        logger.info(f"Video total frames: {total_frames}")
+
+        # Read frames in 1 second intervals
+        ret = True
+
+        while ret:
+            frames = []
+            for i in range(int(fps)):
+                ret, frame = video.read()
+
+                if not ret:
+                    break
+
+                frames.append(frame)
+
+            if len(frames) < 3:
+                break
+
+            first_frame = frames[0]
+            last_frame = frames[-1]
+
+            first_prompt = self.danbooru_blip(first_frame)
+            last_prompt = self.danbooru_blip(last_frame)
+
+            logger.info(f"First prompt: {first_prompt}")
+            logger.info(f"Last prompt: {last_prompt}")
+
+            cv2.imshow("first", first_frame)
+
+            # Press Q on keyboard to  exit
+            if cv2.waitKey(10000) & 0xFF == ord("q"):
+                break
+
     def test(self):
         # from vibrant_vision.sd.models.controlnet.model_loader import convert_controlnet_model
 
@@ -130,15 +236,18 @@ class Maestro:
         #     Image.fromarray(t).save(f"imgs/{i}.png")
 
         # return
-        pp = "masterpiece, best quality, 1girl, bangs, blue_sailor_collar, blurry, blurry_foreground, blush, branch, rainbow hair, cherry_blossoms, dango, depth_of_field, eyebrows_visible_through_hair, falling_petals, floral_background, flower, hair_between_eyes, hand_up, holding, holding_flower, in_tree, long_hair, long_sleeves, looking_at_viewer, neckerchief, outdoors, petals, pink_flower, plum_blossoms, yellow_eyes, red_neckerchief, sailor_collar, school_uniform, serafuku, shirt, smile, solo, tree, upper_body, wagashi, white_flower, glowing eyes, big eyes, red uniform, night, bioluminescence, moonlight, black background"
+        pp = "masterpiece, best quality, 1girl, solo, long_hair, breasted, highres, blush, smile, looking_at_viewer, hair_ornament, bow, twintails, brown_eyes, cleavage, white_background, school_uniform, sitting, animal_ears, green_eyes, holding, shoes, heart, striped, elbow_gloves"
+        pp1 = "masterpiece, best quality, 1girl, solo, long_hair, breasted, highres, blush, smile, looking_at_viewer, hair_ornament, bow, twintails, brown_eyes, cleavage, white_background, school_uniform, sitting, animal_ears, green_eyes, holding, shoes, heart, striped, elbow_gloves, choker, pink_eyes, covered_nipples, arms_up, collar, dutch_angle, book, vest, kneehighs, one_eye_closed, looking_back"
+        pp2 = "masterpiece, best quality, 1girl, solo, long_hair, breasted, highres, blush, smile, looking_at_viewer, hair_ornament, bow, twintails, brown_eyes, cleavage, white_background, school_uniform, sitting, animal_ears, green_eyes, holding, shoes, heart, striped, elbow_gloves, choker, pink_eyes, covered_nipples, arms_up, collar, dutch_angle, book, vest, kneehighs, one_eye_closed, looking_back, food, small_breasts, white_legwear, pleated_skirt, frills, flower, yellow_eyes, pink_hair, wings, hair_bow"
         np = "easynegative, lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry, artist name, day, daylight, blue sky, white background"
+
         list_prompts = []
         list_prompts.append(pp)
         list_prompts.append(pp)
-        list_prompts.append(pp)
-        list_prompts.append(pp)
-        list_prompts.append(pp)
-        list_prompts.append(pp)
+        list_prompts.append(pp1)
+        list_prompts.append(pp1)
+        list_prompts.append(pp2)
+        list_prompts.append(pp2)
 
         fixed_seed = 1791072463
         variance_threshold = 0.45
@@ -146,11 +255,11 @@ class Maestro:
         fp_movie = "./out/movie_example2.mp4"
         num_inference_steps = 10
         depth_strength = 0.65  # Specifies how deep (in terms of diffusion iterations the first branching happens)
-        duration_single_trans = 2
-        max_frames = 25
+        duration_single_trans = 1
+        max_frames = 15
 
         self.blending.set_negative_prompt(np)
-        self.blending.set_controlnet_guidance_percent(0.3)
+        self.blending.set_controlnet_guidance_percent(0.8)
         self.blending.set_guidance_scale(7.0)
 
         # self.blending.set_height(768)

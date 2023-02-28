@@ -10,7 +10,7 @@ python = ">=3.10.7,<3.11"
 torch = "1.13.1+cu117"
 torchvision = "0.14.1+cu117"
 torchaudio = "0.13.1+cu117"
-diffusers = { extras = ["torch"], version = "^0.13.1" }
+diffusers = {git = "https://github.com/takuma104/diffusers", rev = "controlnet"}
 transformers = "^4.26.1"
 xformers = "^0.0.16"
 pandas = "^1.5.3"
@@ -25,6 +25,7 @@ safetensors = "^0.2.8"
 accelerate = { git = "https://github.com/huggingface/accelerate" }
 clip-interrogator = "^0.5.4"
 pytorch-lightning = "^1.9.3"
+opencv-contrib-python = "^4.7.0.72"
 
 [tool.poetry.group.dev.dependencies]
 black = "^22.12.0"
@@ -37,6 +38,7 @@ torch-install = "python -m pip install torch==1.13.1+cu117 torchvision==0.14.1+c
 start = "poetry run python main.py"
 convert_ckpt = "poetry run python ./scripts/convert_original_stable_diffusion_to_diffusers.py"
 create_dataset = "poetry run python ./training/dataset/canny_animate/create_dataset.py"
+clean_dataset = "poetry run python ./training/dataset/canny_animate/clean_dataset.py"
 train = "poetry run python ./training/dataset/canny_animate/ControlNet/train.py"
 
 [build-system]
